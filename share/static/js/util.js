@@ -27,6 +27,78 @@ function transactionFilterSelectNone(clickedLink, event) {
     return false;
 }
 
+function attachmentFilterSelectAll(clickedLink, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    clickedLink.closest('.attachment-filter-dropdown').querySelectorAll('input[name="FilterAttachmentTypes"][type="checkbox"]').forEach(checkbox => {
+        checkbox.checked = true;
+        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    return false;
+}
+
+function attachmentFilterSelectNone(clickedLink, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    clickedLink.closest('.attachment-filter-dropdown').querySelectorAll('input[name="FilterAttachmentTypes"][type="checkbox"]').forEach(checkbox => {
+        checkbox.checked = false;
+        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    return false;
+}
+
+function filterAttachments(evt) {
+    const toolbar = evt?.target.closest('.attachment-toolbar') || document.querySelector('.attachment-toolbar');
+    const search = toolbar.querySelector('.attachment-search').value.toLowerCase();
+    const checkedTypeCheckboxes = toolbar.querySelectorAll('input[name="FilterAttachmentTypes"][type="checkbox"]:checked');
+    const types = Array.from(checkedTypeCheckboxes).map(checkbox => checkbox.value);
+
+    toolbar.closest('.titlebox').querySelectorAll('.attachment-list > table > tbody > tr').forEach(elt => {
+        if (search.length) {
+            if (types.includes(elt.getAttribute('data-type'))) {
+                let matched;
+                for (const item of elt.querySelectorAll('td[data-search="1"]')) {
+                    if (item.innerText.toLowerCase().includes(search)) {
+                        matched = true;
+                        break;
+                    }
+                }
+                if ( matched ) {
+                    elt.classList.remove('d-none');
+                }
+                else {
+                    elt.classList.add('d-none');
+                }
+            }
+            else {
+                elt.classList.add('d-none');
+            }
+        }
+        else {
+            if (types.includes(elt.getAttribute('data-type'))) {
+                elt.classList.remove('d-none');
+            }
+            else {
+                elt.classList.add('d-none');
+            }
+        }
+    });
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+            func.apply(this, args);
+        }, wait);
+    };
+}
+
 function hideshow(id) { return toggleVisibility( id ) }
 function toggleVisibility(id) {
     var e = jQuery('#' + id);

@@ -144,9 +144,13 @@ registerLoadListener(function(evt) {
             jQuery('#attach-dropzone').siblings('div.old-attach').removeClass('hidden');
         }
     });
+%# AutoSubmit doesn't support to remove files.
+%# Additionally, the event is triggered unnecessarily when the Attachments widget refreshes after adding a file.
+%   if ( !$AutoSubmit ) {
     attachDropzone.on('removedfile', function(file) {
         jQuery.post( RT.Config.WebHomePath + '/Helpers/Upload/Delete', { Name: this._renameFile(file), Token: jQuery('#attach-dropzone').closest('form').find('input[name=Token]').val() }, 'json');
     });
+%   }
     attachDropzone.on('dragenter', function() {
         jQuery('#attach-dropzone').addClass('scaled');
     });
@@ -167,13 +171,26 @@ registerLoadListener(function(evt) {
     });
     attachDropzone.on('queuecomplete', function() {
         submit_input.prop('disabled', false).attr('value', submit_input_label);
+%       if ( $AutoSubmit ) {
+            htmx.trigger(document.querySelector('#attach-dropzone').closest('form'), 'submit');
+%       }
     });
 });
 </script>
         <div class="hidden old-attach">
           <input type="file" id="Attach" name="Attach" class="form-control" />
+%         if ( !$AutoSubmit ) {
           <& /Elements/Submit, Name => "AddMoreAttach", Label => loc('Add More Files'), FullWidth => 1 &>
+%         }
         </div>
+
+% if ( !RT->Config->Get('PreferDropzone', $session{CurrentUser}) && $AutoSubmit ) {
+<script type="text/javascript">
+document.querySelector('#Attach').addEventListener('change', function() {
+    htmx.trigger(this.closest('form'), 'submit');
+});
+</script>
+% }
 
 % if ($FullWidth) {
   </div>
@@ -185,10 +202,11 @@ registerLoadListener(function(evt) {
   <div id="reuse-attachments">
     <& /Ticket/Elements/ShowAttachments,
       Ticket       => $TicketObj,
-      Selectable   => 1,
       HideTitleBox => 1,
       Checked      => \@AttachExisting,
-      Count        => RT->Config->Get('AttachmentListCount'),
+      SelectOnly   => 1,
+      SelectInputName => 'AttachExisting',
+      $Attachments ? ( Attachments => $Attachments ) : (),
     &>
 </&>
 % }
@@ -199,6 +217,9 @@ $Token => ''
 $QuoteTransaction => ''
 $TicketObj => undef
 $FullWidth => undef
+$SelectAttachments => 1
+$AutoSubmit => 0
+$Attachments => undef
 </%ARGS>
 <%INIT>
 my $attachments;
@@ -208,9 +229,13 @@ if ( exists $session{'Attachments'}{ $Token } && keys %{ $session{'Attachments'}
 
 my $HasExisting = 0;
 
-if ($TicketObj && $TicketObj->id) {
+if ( $Attachments && $Attachments->Count ) {
+    $HasExisting = 1;
+}
+elsif ( $TicketObj && $TicketObj->id && $SelectAttachments ) {
     my $Existing = $TicketObj->Attachments;
     $Existing->LimitHasFilename;
     $HasExisting = 1 if $Existing->Count;
 }
+
 </%INIT>

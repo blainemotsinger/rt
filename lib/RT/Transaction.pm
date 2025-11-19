@@ -81,7 +81,7 @@ with "RT::Record::Role::ObjectContent" => { -rename   => { SetContent => '_SetCo
 use vars qw( %_BriefDescriptions $PreferredContentType @TxnTypeTicketList @TxnTypeAssetList );
 
 # Default list of common transaction types for short filter lists
-@TxnTypeTicketList = qw(Create Correspond Comment CommentEmailRecord Status Set EmailRecord CustomField AddLink DeleteLink AddWatcher DelWatcher SetWatcher);
+@TxnTypeTicketList = qw(Create Correspond Comment CommentEmailRecord Status Set EmailRecord CustomField AddLink DeleteLink AddWatcher DelWatcher SetWatcher AddAttachment DeleteAttachment RenameAttachment);
 push @TxnTypeTicketList, 'Forward Ticket', 'Forward Transaction';
 
 # Default list of transaction types for asset filter lists
@@ -1738,7 +1738,18 @@ sub _CanonicalizeRoleName {
             return 'Image deleted';
         }
     },
-
+    AddAttachment => sub {
+        my $self = shift;
+        return ( "Attachment '[_1]' added", $self->Data);    #loc()
+    },
+    DeleteAttachment => sub {
+        my $self = shift;
+        return ( "Attachment '[_1]' deleted", $self->Data);    #loc()
+    },
+    RenameAttachment => sub {
+        my $self = shift;
+        return ( "Attachment renamed from '[_1]' to '[_2]'", $self->OldValue, $self->NewValue );    #loc()
+    },
 );
 
 =head2 GetTransactionTypes

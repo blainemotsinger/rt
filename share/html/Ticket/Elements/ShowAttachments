@@ -49,77 +49,253 @@
         title_class=> 'inverse',  
         class => 'ticket-info-attachments',
         color => "#336699",
-        hide_chrome => $HideTitleBox &>
+        hide_chrome => $HideTitleBox,
+        titleright_raw => $titleright,
+        htmx_load => $ARGS{htmx_load},
+&>
 
-% $m->callback( %ARGS, CallbackName => 'BeforeList', TicketObj => $Ticket, Attachments => $Attachments, Documents => \%documents, IsChecked => \%is_checked, ShowMore => \$show_more );
-
-<div class="attachment-list">
-
-% foreach my $key (sort { lc($a) cmp lc($b) } keys %documents) {
-
-<span class="filename"><%$key%></span>
-<ul class="list-group list-group-compact" <% $Selectable ? 'class="selectable"' : '' |n %> >
-% foreach my $rev (@{$documents{$key}}) {
-% if ($rev->ContentLength) {
-<li class="list-group-item">
-
-  <div class="form-check">
-% if ($Selectable) {
-      <input type="checkbox" class="form-check-input" id="AttachExisting-<% $rev->Id %>" name="AttachExisting" value="<% $rev->Id %>" \
-        <% $is_checked{$rev->Id} ? 'checked' : '' %>
-      />
+% if ( !$ReadOnly && !$SelectOnly && $session{CurrentUser}->Privileged && $Ticket && $Ticket->CurrentUserHasRight('ModifyTicket') ) {
+<form class="attachment-form" hx-post="<% RT->Config->Get("WebPath") %>/Helpers/TicketUpdate" hx-swap="none" enctype="multipart/form-data">
+  <input name="Token" value="<% Digest::MD5::md5_hex( rand(1024) ) %>" type="hidden">
+  <input name="id" value="<% $Ticket->Id %>" type="hidden">
+  <input name="AddAttachments" value="1" type="hidden">
+  <input name="PinAttachments" value="" type="hidden">
+  <input name="UnpinAttachments" value="" type="hidden">
+  <input name="DeleteAttachments" value="" type="hidden">
+  <& /Ticket/Elements/AddAttachments, TicketObj => $Ticket, SelectAttachments => 0, FullWidth => 1, AutoSubmit => 1 &>
 % }
 
-<label <% $Selectable ? 'class="form-check-label"' : '' |n%> for="AttachExisting-<% $rev->Id %>">
-<span class="revision">
-% if (my $url = RT->System->ExternalStorageURLFor($rev)) {
-<a hx-boost="false" href="<%$url%>">
-% } else {
-<a hx-boost="false" href="<%RT->Config->Get('WebPath')%>/<% $DisplayPath %>/Attachment/<%$rev->TransactionId%>/<%$rev->Id%>/<%$rev->Filename | un %>">
-% }
-% my $desc = loc("[_1] ([_2]) by [_3]", $rev->CreatedAsString, $rev->FriendlyContentLength, $m->scomp('/Elements/ShowUser', User => $rev->CreatorObj));
-<% $desc |n%>
-</a>
-</span>
-    </label>
+<div class="row mt-2 gx-2 attachment-toolbar">
+  <div class="col-auto">
+    <span class="rt-inline-icon rt-inline-icon-lg dropdown border rounded">
+      <a class="attachment-filter" class="menu-item" href="#" aria-label="<% loc('Type Filter') %>" data-bs-toggle="dropdown" data-bs-auto-close="outside" data-bs-boundary="viewport" aria-haspopup="true" aria-expanded="false">
+        <% GetSVGImage(Name => 'funnel', Title => loc('Type Filter'), Size => 24) |n %>
+      </a>
+      <ul class="dropdown-menu dropdown-menu-end attachment-filter-dropdown" data-bs-boundary="viewport">
+        <li class="">
+          <div class="dropdown-submenu">
+            <div class="d-flex justify-content-between align-items-center mb-2 px-2 filter-actions">
+              <a href="#" onclick="return attachmentFilterSelectAll(this, event);" class="attachment-filter-select-link text-body-secondary text-decoration-none"><% loc('All') %></a>
+              <a href="#" onclick="return attachmentFilterSelectNone(this, event);" class="attachment-filter-select-link text-body-secondary text-decoration-none"><% loc('None') %></a>
+            </div>
+%         for my $type ( sort { $a cmp $b } List::MoreUtils::uniq values %type ) {
+            <div class="form-check mx-3">
+              <input class="form-check-input" type="checkbox" name="FilterAttachmentTypes" value="<% $type %>" id="<% 'attachment-type-' . $type %>" checked>
+              <label class="form-check-label" for="<% 'attachment-type-' . $type %>"><% $type %></label>
+            </div>
+%         }
+          </div>
+        </li>
+      </ul>
+    </span>
   </div>
-</li>
+  <div class="col-auto">
+    <select class="form-select selectpicker attachment-sort">
+%   for my $field ( qw/Name Type Size Date/ ) {
+%     for my $order ( qw/asc desc/ ) {
+      <option value="<% $field %>-<% $order %>"><% loc($field) %> <% $order eq 'asc' ? loc('Ascending') : loc('Descending') %></option>
+%     }
+%   }
+    </select>
+  </div>
+  <div class="col">
+    <input class="form-control attachment-search" name="attachment-search" type="text" placeholder="<% loc('Search') %>">
+  </div>
+</div>
+
+% if ( !$ReadOnly && !$SelectOnly ) {
+<div class="row mt-2 gx-2 bulk-only attachment-bulk-actions">
+  <div class="col-auto">
+%   if ( $session{CurrentUser}->Privileged && $Ticket && $Ticket->CurrentUserHasRight('ModifyTicket') ) {
+    <a hx-post="<% RT->Config->Get("WebPath") %>/Helpers/TicketUpdate" class="btn btn-primary btn-sm disabled attachment-bulk-delete" aria-disabled="true" hx-indicator=".ticket-info-attachments"><% loc('Delete Selected') %></a>
+%   }
+  </div>
+  <div class="col text-end">
+    <a href="<% RT->Config->Get("WebPath") %>/<% $DisplayPath %>/Attachment/Bulk" class="btn btn-sm btn-primary disabled attachment-bulk-download" aria-disabled="true"><% loc('Download Selected') %></a>
+    <a href="<% RT->Config->Get("WebPath") %>/<% $DisplayPath %>/Create.html" class="btn btn-sm btn-primary disabled attachment-bulk-create" aria-disabled="true"><% loc('Copy Selected to New Ticket') %></a>
+
+  </div>
+</div>
 % }
+
+% $m->callback( %ARGS, CallbackName => 'BeforeList', TicketObj => $Ticket, Attachments => $Attachments, Documents => \%documents, IsChecked => \%is_checked );
+
+<div class="attachment-list mt-2">
+<table class="align-middle table <% RT->Config->Get('TableAccent') %> <% $ReadOnly || $SelectOnly ? '' : 'inline-edit' %>">
+  <tbody>
+% for my $filename (sort { lc($a) cmp lc($b) } keys %documents) {
+%     my $first = $documents{$filename}[0];
+%     my $pinned = $Ticket && grep ( { $_ eq $filename } $Ticket->PinnedAttachments ) ? 1 : 0;
+    <tr data-name="<% $filename %>" data-type="<% $type{$filename} %>" data-size="<% $first->ContentLength %>" data-date="<% $first->Created %>" data-id="<% $first->Id %>" class="<% $pinned ? 'attachment-pinned' : '' %>">
+      <td class="<% !$ReadOnly && $SelectOnly ? '' : 'bulk-only' %>">
+        <div class="form-check">
+          <input type="checkbox" class="attachment-select" name="<% $SelectInputName %>" <% $is_checked{$first->Id} ? 'checked' : '' %> id="SelectAttachments-<% $first->Id %>" value="<% $first->Id %>" class="checkbox form-check-input" />
+          <label class="form-check-label" for="SelectAttachments-<% $first->Id %>"></label>
+        </div>
+      </td>
+      <td class="attachment-icon">
+%       my $svg = RT->Config->Get('SVG')->{"filetype-$type{$filename}"} ? "filetype-$type{$filename}" : 'file-earmark';
+        <% GetSVGImage( Name => RT->Config->Get('SVG')->{"filetype-$type{$filename}"} ? "filetype-$type{$filename}" : 'file-earmark', Size => 48 ) |n %>
+      </td>
+      <td data-search="1">
+%     if ( !$ReadOnly && !$SelectOnly && $session{CurrentUser}->Privileged && $Ticket && $Ticket->CurrentUserHasRight('ModifyTicket') ) {
+        <div class="editable">
+          <form hx-swap="none" hx-post="<% RT->Config->Get('WebPath') %>/Helpers/TicketUpdate?id=<% $Ticket->Id %>" class="editor" autocomplete="off">
+            <input type="text" required class="form-control" name="RenameAttachment-<% $first->Id %>" value="<% $filename %>">
+%           if ($pinned) {
+            <input type="hidden" name="RenameAttachment-<% $first->Id %>-Pinned" value="1">
+%           }
+            <% GetSVGImage( Name => 'close-circle', ExtraClasses => 'cancel text-danger', Title => loc('Cancel') ) |n %>
+            <% GetSVGImage( Name => 'check-circle', ExtraClasses => 'submit text-success', Title => loc('Save') ) |n %>
+            <div class="spinner-border spinner-border-sm loading" role="status"></div>
+          </form>
+%     }
+        <div class="value">
+%       if ($first->ContentLength) {
+%         if (my $url = RT->System->ExternalStorageURLFor($first)) {
+          <a hx-boost="false" href="<% $url %>">
+%         } else {
+          <a hx-boost="false" href="<% RT->Config->Get('WebPath') %>/<% $DisplayPath %>/Attachment/<%
+$first->TransactionId%>/<% $first->Id %>/<% $first->Filename | un %>">
+%         }
+            <% $filename %>
+          </a>
+%       } else {
+          <% $filename %>
+%       }
+
+%       if ( !$ReadOnly && !$SelectOnly && $session{CurrentUser}->Privileged && $Ticket && $Ticket->CurrentUserHasRight('ModifyTicket') ) {
+          <% GetSVGImage( Name => 'pencil', ExtraClasses => 'edit-icon float-none ms-1', Title => loc('Rename') ) |n %>
+          </div>
+%       }
+        </div>
+        <small>
+        <% loc("[_1] by [_2]", $first->CreatedAsString, $m->scomp('/Elements/ShowUser', User => $first->CreatorObj)) |n %>
+        <br>
+        <% $first->FriendlyContentLength %>
+%       if ( $first->TransactionObj->Type ne 'AddAttachment' ) {
+        <% loc('Linked to') %>: <a href="<% RT->Config->Get('WebPath') %>/<% $session{CurrentUser}->Privileged ? '' : 'SelfService/' %>Transaction/Display.html?id=<% $first->TransactionId
+%>"><% loc($first->TransactionObj->Type) %> #<% $first->TransactionId %></a>
+%       }
+        </small>
+      </td>
+      <td>
+%     if ($first->ContentLength) {
+%       if (my $url = RT->System->ExternalStorageURLFor($first)) {
+        <a hx-boost="false" href="<% $url %>">
+%       } else {
+        <a hx-boost="false" href="<% RT->Config->Get('WebPath') %>/<% $DisplayPath %>/Attachment/<%
+$first->TransactionId%>/<% $first->Id %>/<% $first->Filename | un %>?AlwaysDownloadAttachments=1">
+%       }
+        <% GetSVGImage( Name => 'download', Title => loc('Download') ) |n %>
+        </a>
+%     }
+      </td>
+%     if ( !$ReadOnly && !$SelectOnly ) {
+      <td>
+        <a class="menu-item" href="javascript:void(0)" aria-label="$alt" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+          <% GetSVGImage( Name => 'three-dots-vertical', Title => loc('More') ) |n %>
+        </a>
+        <ul class="dropdown-menu dropdown-menu-end">
+%       if ( @{$documents{$filename}} > 1 ) {
+          <li class="dropdown-item">
+            <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#attachment-<% $first->id %>-modal"><% loc('Show Older') %></a>
+          </li>
+%       }
+
+%       if ( $Ticket ) {
+%         if ( $Ticket->CurrentUserHasRight('ModifyTicket') ) {
+          <li class="dropdown-item">
+            <a href="javascript:void(0)" class="attachment-delete"><% loc('Delete') %></a>
+          </li>
+          <li class="dropdown-item">
+            <a href="javascript:void(0)" class="attachment-rename"><% loc('Rename') %></a>
+          </li>
+          <li class="dropdown-item">
+%           if ( $pinned ) {
+            <a href="javascript:void(0)" class="attachment-unpin"><% loc('Unpin') %></a>
+%           } else {
+            <a href="javascript:void(0)" class="attachment-pin"><% loc('Pin to top') %></a>
+%           }
+          </li>
+%         }
+
+%         if ( $session{CurrentUser}->Privileged ) {
+          <li class="dropdown-item">
+            <a href="<% RT->Config->Get("WebPath") %>/<% $DisplayPath %>/Create.html?AttachExisting=<% $first->Id %>" class="attachment-rename"><% loc('Copy to New Ticket') %></a>
+          </li>
+%         }
+
+%         if ( $Ticket->CurrentUserHasRight('ReplyToTicket') ) {
+          <li class="dropdown-item"><a href="<% RT->Config->Get("WebPath") %>/<% $DisplayPath %>/Update.html?Action=Correspond&id=<%
+$Ticket->Id %>&AttachExisting=<% $first->Id %>"><% loc('Reply') %></a></li>
+%         }
+%         if ( $Ticket->CurrentUserHasRight('CommentOnTicket') ) {
+          <li class="dropdown-item"><a href="<% RT->Config->Get("WebPath") %>/<% $DisplayPath %>/Update.html?Action=Comment&id=<%
+$Ticket->Id %>&AttachExisting=<% $first->Id %>"><% loc('Comment') %></a></li>
+%         }
+%       }
+        </ul>
+%       if ( @{$documents{$filename}} > 1 ) {
+        <div hx-boost="false" class="modal fade" id="attachment-<% $first->id %>-modal" tabindex="-1" role="dialog">
+          <div class="modal-dialog modal-dialog-scrollable" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title"><% loc('All versions of [_1]', $first->Filename) %></h5>
+                <a href="javascript:void(0)" class="close" data-bs-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </a>
+              </div>
+              <div class="modal-body">
+                <table class="table <% RT->Config->Get('TableAccent') %>">
+                  <thead>
+                    <th><% loc('Date') %></th>
+                    <th><% loc('Size') %></th>
+                    <th><% loc('Creator') %></th>
+                    <th></th>
+                  </thead>
+                  <tbody>
+%                     for my $version ( @{$documents{$filename}} ) {
+                    <tr>
+                      <td><% $version->CreatedAsString %></td>
+                      <td><% $version->FriendlyContentLength %></td>
+                      <td><& /Elements/ShowUser, User => $version->CreatorObj &></td>
+                      <td>
+%                         if ($version->ContentLength) {
+%                           if (my $url = RT->System->ExternalStorageURLFor($first)) {
+                        <a hx-boost="false" href="<% $url %>">
+%                           } else {
+                        <a hx-boost="false" href="<% RT->Config->Get('WebPath') %>/<% $DisplayPath %>/Attachment/<%
+$version->TransactionId%>/<% $version->Id %>/<% $version->Filename | un %>?AlwaysDownloadAttachments=1">
+%                           }
+                        <% GetSVGImage( Name => 'download', Title => loc('Download') ) |n %>
+                        </a>
+%                         }
+                      </td>
+                    </tr>
+%                     }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+%       }
+      </td>
+%     }
+    </tr>
 % }
-</ul>
+  </tbody>
+</table>
 
-% }
-
-% $m->callback( %ARGS, CallbackName => 'AfterList', TicketObj => $Ticket, Attachments => $Attachments, Documents => \%documents, IsChecked => \%is_checked, ShowMore => \$show_more );
-
-% if ($show_more) {
-<span class="show-more-link">
-% my %params = %ARGS;
-% delete $params{Ticket};
-% delete $params{Attachments};
-% delete $params{Count};
-% my $query = $m->comp('/Elements/QueryString', %params, id => $Ticket->id );
-% my $url   = RT->Config->Get('WebPath')."/Helpers/TicketAttachments?$query";
-
-<script type="text/javascript">
-    function showAllAttachments(node) {
-        var container = node.closest('.attachment-list');
-        var params = node.closest('form').find('input[name=AttachExisting]').serialize();
-
-        node.parent().text(<% loc('Loading...') | n,j%>);
-
-        var url = <% $url |n,j %>;
-        if (params) url += '&' + params;
-        container.load(url);
-    }
-</script>
-
-<a href="#" class="btn btn-primary" onclick="showAllAttachments(jQuery(this)); return false;" ><% loc('Show all') %></a>
-
-</span>
-% }
+% $m->callback( %ARGS, CallbackName => 'AfterList', TicketObj => $Ticket, Attachments => $Attachments, Documents => \%documents, IsChecked => \%is_checked );
 
 </div>
+
+% if ( !$ReadOnly && !$SelectOnly && $session{CurrentUser}->Privileged && $Ticket && $Ticket->CurrentUserHasRight('ModifyTicket') ) {
+  <& /Widgets/Spinner &>
+</form>
+% }
 </&>
 
 <%INIT>
@@ -146,25 +322,43 @@ $Attachments->OrderByCols(
 );
 
 while ( my $attach = $Attachments->Next() ) {
-   # display "show more" only when there will be more attachments
-   if (defined($Count) && --$Count < 0) {
-       $show_more = 1;
-       last;
-   }
    push @{ $documents{ $attach->Filename } }, $attach;
 }
 
-my %is_checked = map { $_ => 1 } @Checked;
+return if keys %documents == 0 && $ReadOnly;
 
-return if !$show_more && keys %documents == 0;
+my %type;
+for my $filename ( keys %documents ) {
+  my $ext = lc $filename;
+  $ext =~ s!.*\.!!;
+  $type{$filename} = $ext;
+}
+
+my $titleright;
+if ( !$ReadOnly && !$SelectOnly ) {
+    my $bulk_svg   = GetSVGImage( Name => 'collection', Title => loc('Bulk') );
+    my $bulk_alt   = loc('Bulk');
+    my $cancel_svg = GetSVGImage( Name => 'close', Title => loc('Cancel') );
+    my $cancel_alt = loc('Cancel');
+
+    $titleright
+        = qq{<a class="attachment-bulk-toggle bulk" href="javascript:void(0)" aria-label="$bulk_alt" aria-haspopup="true" aria-expanded="false"><span class="rt-inline-icon border rounded">$bulk_svg</span></a>
+<a class="attachment-bulk-toggle cancel hidden" href="javascript:void(0)" aria-label="$cancel_alt" aria-haspopup="true" aria-expanded="false"><span class="rt-inline-icon border rounded">$cancel_svg</span></a>
+};
+}
+my %is_checked = map { $_ => 1 } @Checked;
 </%INIT>
 <%ARGS>
 $Ticket => undef
 $Attachments => undef
 $DisplayPath => $session{'CurrentUser'}->Privileged ? 'Ticket' : 'SelfService'
 $HideTitleBox => 0
-$Selectable => 0
-$Count => undef
+$SelectOnly => 0
+$SelectInputName => ''
+$ReadOnly => 0
 @Checked => ()
 </%ARGS>
 
+<%attr>
+directly_accessible => 1
+</%attr>

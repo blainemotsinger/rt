@@ -811,6 +811,110 @@ document.addEventListener('htmx:load', function(evt) {
         });
     });
 
+    elt.querySelector('.attachment-sort')?.addEventListener('change', (evt) => {
+        // sorter is like type-asc
+        const sorter = evt.target.value.toLowerCase().split('-');
+        if ( sorter.length !== 2 ) return;
+
+        const rows = Array.from(evt.target.closest('.titlebox').querySelectorAll('.attachment-list > table > tbody > tr'));
+        const tbody = evt.target.closest('.titlebox').querySelector('.attachment-list tbody');
+        const direction = sorter[1] === 'asc' ? 1 : -1;
+        const sorted_rows = rows.sort((a, b) => {
+            if (!(a.classList.contains('attachment-pinned') && b.classList.contains('attachment-pinned'))) {
+                if (a.classList.contains('attachment-pinned')) return -1;
+                if (b.classList.contains('attachment-pinned')) return 1;
+            }
+
+            let value_a = a.getAttribute('data-' + sorter[0]).toLowerCase();
+            let value_b = b.getAttribute('data-' + sorter[0]).toLowerCase();
+            if (sorter[0] === 'size') {
+                value_a = parseInt(value_a);
+                value_b = parseInt(value_b);
+            }
+            if ( value_a < value_b ) {
+                return -1 * direction;
+            }
+            else if ( value_a > value_b ) {
+                return direction;
+            }
+            else {
+                return 0;
+            }
+        });
+        tbody.append(...sorted_rows);
+    });
+    elt.querySelector('.attachment-sort')?.dispatchEvent(new Event('change'));
+
+    elt.querySelector('.attachment-search')?.addEventListener('input', debounce(filterAttachments, 500));
+    elt.querySelector('.attachment-filter-dropdown')?.addEventListener('change', debounce(filterAttachments, 100));
+
+    elt.querySelector('.attachment-list')?.addEventListener('click', evt => {
+        const action = evt.target.closest('.attachment-pin, .attachment-unpin, .attachment-delete');
+        if (!action) return;
+
+        evt.preventDefault();
+        evt.stopPropagation();
+
+        const form = evt.target.closest('.titlebox')?.querySelector('form.attachment-form');
+        if (!form) return;
+
+        let input_name;
+        if (action.classList.contains('attachment-pin')) {
+            input_name = 'PinAttachments';
+        }
+        else if (action.classList.contains('attachment-unpin')) {
+            input_name = 'UnpinAttachments';
+        }
+        else {
+            input_name = 'DeleteAttachments';
+        }
+        form.querySelector('input[name="' + input_name + '"]').value = evt.target.closest('[data-id]').getAttribute('data-id');
+        htmx.trigger(form, 'submit');
+    });
+
+    elt.querySelectorAll('.attachment-bulk-toggle').forEach(elt => {
+        elt.addEventListener('click', evt => {
+            evt.currentTarget.classList.add('hidden');
+            const widget = evt.target.closest('.titlebox');
+
+            if (evt.currentTarget.classList.contains('bulk')) {
+                widget.classList.add('bulk');
+                widget.querySelector('.attachment-bulk-toggle.cancel').classList.remove('hidden');
+            }
+            else {
+                widget.classList.remove('bulk');
+                widget.querySelector('.attachment-bulk-toggle.bulk').classList.remove('hidden');
+            }
+            evt.preventDefault();
+            evt.stopPropagation();
+        })
+    });
+
+    elt.querySelectorAll('input.attachment-select').forEach(elt => {
+        elt.addEventListener('change', evt => {
+            const widget = evt.target.closest('.titlebox');
+            const checkboxes = widget.querySelectorAll('input.attachment-select:checked');
+            const ids = Array.from(checkboxes).map(checkbox => checkbox.value);
+
+            if ( ids.length ) {
+                widget.querySelectorAll('.attachment-bulk-actions .btn').forEach(elt => {
+                    elt.classList.remove('disabled');
+                    elt.removeAttribute('aria-disabled');
+                });
+            }
+            else {
+                widget.querySelectorAll('.attachment-bulk-actions .btn').forEach(elt => {
+                    elt.classList.add('disabled');
+                    elt.setAttribute('aria-disabled', true);
+                });
+            }
+
+            widget.querySelector('.attachment-bulk-download')?.setAttribute('hx-vals', JSON.stringify({ ids: ids }));
+            widget.querySelector('.attachment-bulk-create')?.setAttribute('hx-vals', JSON.stringify({ AttachExisting: ids }));
+            widget.querySelector('.attachment-bulk-delete')?.setAttribute('hx-vals', JSON.stringify({ DeleteAttachments: ids }));
+        });
+    });
+
     // Use Growl to show any UserMessages written to the page
     var userMessages = RT.UserMessages;
     for (var key in userMessages) {

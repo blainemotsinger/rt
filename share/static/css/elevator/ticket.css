@@ -111,6 +111,19 @@ div.requestor-ticket-links {
     word-break: break-word;
 }
 
+.attachment-pinned .attachment-icon svg {
+    fill: #00BFA5;
+}
+
+.ticket-info-attachments .attachment-list {
+    max-height: 300px;
+    overflow: scroll;
+}
+
+.ticket-info-attachments.titlebox:not(.bulk) .bulk-only {
+    display: none;
+}
+
 ul.select-queue {
     list-style-type: none;
     margin-left: 0;
@@ -150,7 +163,6 @@ ul.select-queue li+li {
 .process-article-summary {
     font-weight: bold;
 }
-
 
 [data-bs-theme=light] {
     .ticket-inactive a {
