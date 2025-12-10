@@ -523,6 +523,7 @@ sub ContentAsMIME {
     my $self = shift;
     my %opts = (
         Children => 0,
+        ExpandAttachHeaders => 0,
         @_
     );
 
@@ -532,6 +533,34 @@ sub ContentAsMIME {
         $entity->head->add(
             $h_key, $self->_EncodeHeaderToMIME($h_key, $h_val)
         );
+    }
+
+    my @attach_ids;
+    # RT-Attach is supposed to exist in top part only
+    if ( $opts{ExpandAttachHeaders} && !$self->Parent && !$self->IsMessageContentType ) {
+        @attach_ids = $self->GetAllHeaders('RT-Attach');
+        if ( @attach_ids && !$entity->is_multipart ) {
+            $entity->make_multipart;
+            $entity->add_part( $self->ContentAsMIME() );
+        }
+
+        for my $attach_id ( List::MoreUtils::uniq @attach_ids ) {
+            my $attach = RT::Attachment->new( $self->CurrentUser );
+            $attach->Load($attach_id);
+            if ( $attach->Id ) {
+                if ( $attach->CurrentUserCanSee ) {
+                    $entity->add_part( $attach->ContentAsMIME(%opts) );
+                }
+                else {
+                    RT->Logger->warning( 'User '
+                            . $self->CurrentUser->Name
+                            . " does not have permission to view attachment #$attach_id" );
+                }
+            }
+            else {
+                RT->Logger->warning("Couldn't load attachment #$attach_id");
+            }
+        }
     }
 
     if ($entity->is_multipart) {

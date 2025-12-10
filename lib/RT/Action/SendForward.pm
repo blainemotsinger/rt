@@ -66,7 +66,7 @@ sub Prepare {
     my $txn = $self->TransactionObj;
 
     if ( $txn->Type eq 'Forward Transaction' ) {
-        my $forwarded_txn = RT::Transaction->new( $self->CurrentUser );
+        my $forwarded_txn = RT::Transaction->new( $txn->CreatorObj );
         $forwarded_txn->Load( $txn->Field );
         $self->{ForwardedTransactionObj} = $forwarded_txn;
     }
@@ -87,10 +87,12 @@ sub Prepare {
 
     my $entity;
     if ( $txn->Type eq 'Forward Transaction' ) {
-        $entity = $self->ForwardedTransactionObj->ContentAsMIME;
+        $entity = $self->ForwardedTransactionObj->ContentAsMIME( ExpandAttachHeaders => 1 );
     }
     else {
-        my $txns = $self->TicketObj->Transactions;
+        my $ticket = RT::Ticket->new( $txn->CreatorObj );
+        $ticket->Load( $self->TicketObj->Id );
+        my $txns = $ticket->Transactions;
         $txns->Limit(
             FIELD    => 'Type',
             OPERATOR => 'IN',
@@ -102,7 +104,7 @@ sub Prepare {
             Description => 'forwarded ticket',
         );
         $entity->add_part($_) foreach
-          map $_->ContentAsMIME,
+          map $_->ContentAsMIME( ExpandAttachHeaders => 1 ),
           @{ $txns->ItemsArrayRef };
     }
 
