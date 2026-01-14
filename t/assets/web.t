@@ -148,9 +148,8 @@ diag "People update";
 {
     my $asset = create_asset( Name => "Test asset", Catalog => $catalog->Id );
     $m->get_ok( '/Asset/Display.html?id=' . $asset->Id );
-    $m->follow_link_ok( { text => 'People' } );
 
-    my $form = $m->form_id('ModifyAssetPeople');
+    my $form = $m->form_with_fields('SetRoleMember-Owner');
     my $owner_input = $form->find_input('SetRoleMember-Owner');
     ok( $owner_input, 'Found owner input' );
     is( $owner_input->value, 'Nobody', 'Default owner is Nobody' );
@@ -159,13 +158,12 @@ diag "People update";
             fields => {
                 'SetRoleMember-Owner' => 'root',
             },
-            button => 'Update',
         },
-        'Submit form ModifyAssetPeople'
+        'Submit People form'
     );
     $m->text_contains('Owner set to root');
 
-    $form = $m->form_id('ModifyAssetPeople');
+    $form = $m->form_with_fields('SetRoleMember-Owner');
     $owner_input = $form->find_input('SetRoleMember-Owner');
     ok( $owner_input, 'Found owner input' );
     is( $owner_input->value, 'root', 'Input value of owner is root' );
@@ -179,26 +177,19 @@ diag "People update";
                 'AddGroupRoleMember-Role' => 'HeldBy',
                 AddGroupRoleMember => 'Staff',
             },
-            button => 'Update',
         },
-        'Submit form ModifyAssetPeople'
+        'Submit People form'
     );
     $m->text_contains('Member added: alice@localhost');
     $m->text_contains('Member added: Staff');
 
-    $form = $m->form_id('ModifyAssetPeople');
+    $form = $m->form_with_fields('SetRoleMember-Owner');
     my $alice = RT::Test->load_or_create_user( Name => 'alice@localhost' );
     $m->tick('RemoveRoleMember-Contact', $alice->Id);
     $m->tick('RemoveRoleMember-HeldBy', $staff->Id);
 
-    $m->submit_form_ok(
-        {
-            button => 'Update',
-        },
-        'Submit form ModifyAssetPeople'
-    );
+    $m->submit_form_ok( {}, 'Submit People form' );
     $m->text_contains('Member deleted');
-
 
     # Add manager later to test if the page works with absent role groups.
     my $manager = RT::CustomRole->new( RT->SystemUser );
@@ -212,7 +203,7 @@ diag "People update";
     ok( $manager->AddToObject( $catalog->Id ) );
 
     $m->reload;
-    $form = $m->form_id('ModifyAssetPeople');
+    $form = $m->form_with_fields('SetRoleMember-Owner');
     my $manager_input = $form->find_input( 'SetRoleMember-' . $manager->GroupType );
     ok( $manager_input, 'Found manager input' );
     is( $manager_input->value, 'Nobody', 'Default manager is Nobody' );
@@ -221,13 +212,10 @@ diag "People update";
             fields => {
                 'SetRoleMember-' . $manager->GroupType => 'root',
             },
-            button => 'Update',
         },
-        'Submit form ModifyAssetPeople'
+        'Submit People form'
     );
     $m->text_contains('Manager set to root');
 }
-
-# XXX TODO: test other modify pages
 
 done_testing;
