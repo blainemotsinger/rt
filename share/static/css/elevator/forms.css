@@ -682,3 +682,14 @@ div.label svg[height="12"] {
 .form-check.has-text-input input.form-check-input {
     margin-top: 0.6rem;
 }
+
+/* display a red asterisk beside labels for required custom fields or invalid fields */
+div.col:has(input.is-invalid) div.rt-label label::after {
+color: var(--bs-form-invalid-color);
+content: ' *';
+}
+
+div.col:has(span.cfhints.required) div.rt-label label::after {
+color: var(--bs-form-invalid-color);
+content: ' *';
+}
