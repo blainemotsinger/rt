@@ -23,7 +23,7 @@ our @Final = (
                             $changed ||= 1;
                             my $dashboard = RT::Attribute->new( RT->SystemUser );
                             $dashboard->Load( $portlet->{id} );
-                            if ( $dashboard->Id ) {
+                            if ( $dashboard->Id && $dashboard->Name eq 'Dashboard' ) {
                                 push @new_panes, @{ $dashboard->Content->{'Panes'}{$pane} || [] }
                                     if $dashboard->Content;
                             }
