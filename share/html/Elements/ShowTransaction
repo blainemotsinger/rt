@@ -48,11 +48,7 @@
 <div class="<% join ' ', @classes %>" data-transaction-id="<% $Transaction->id %>">
   <div class="metadata">
 % if ( @action_icons ) {
-    <span class="actions">
-%   for my $action ( @action_icons ) {
-      <span class="rt-inline-icon border rounded"><% $action |n %></span>
-%   }
-    </span>
+    <span class="actions"><% join '', @action_icons |n %></span>
 % }
     <span class="type">
       <a name="txn-<% $Transaction->id %>" \
@@ -343,6 +339,16 @@ elsif ( %$Attachments && $ShowActions ) {
     }
 }
 
+# Toggle contrast icon for message transactions with a messagebody
+my $toggle_contrast;
+if ( %$Attachments && $ShowBody && $txn_type =~ /^(?:Create|Correspond|Comment)$/ ) {
+    $toggle_contrast = {
+        class  => "toggle-contrast-link",
+        title  => GetSVGImage( Name => 'circle-half', Title => loc('Toggle contrast') ),
+        path   => '#',
+    };
+}
+
 my $CreatorObj = $Transaction->CreatorObj;
 
 $m->callback(
@@ -361,27 +367,30 @@ $m->callback(
     ARGSRef     => \%ARGS,
 );
 
-my @action_icons;
-if ( @actions ) {
-    my $i = $m->interp;
+my $i = $m->interp;
+my $make_icon = sub {
+    my $a = shift;
+    return '<span class="rt-inline-icon border rounded"><a'
+        .' href="'. $i->apply_escapes( $a->{'path'}, 'h' ) .'"'
+        . ($a->{'target'}
+            ? ' target="'. $i->apply_escapes( $a->{'target'}, 'h' ) .'"'
+            : ''
+        )
+        . ($a->{'class'}
+            ? ' class="'. $i->apply_escapes( $a->{'class'}, 'h' ) .'"'
+            : ''
+        )
+        .'>'. $a->{'title'} .'</a></span>';
+};
 
-    foreach my $a ( @actions ) {
-        push @action_icons, '<a'
-            .' href="'. $i->apply_escapes( $a->{'path'}, 'h' ) .'"'
-            . ($a->{'target'}
-                ? ' target="'. $i->apply_escapes( $a->{'target'}, 'h' ) .'"'
-                : ''
-            )
-            . ($a->{'class'}
-                ? ' class="'. $i->apply_escapes( $a->{'class'}, 'h' ) .'"'
-                : ''
-            )
-            .'>'. $a->{'title'} .'</a>'
-        ;
-    }
+my @action_icons;
+if ( $toggle_contrast ) {
+    push @action_icons, $make_icon->($toggle_contrast);
+    push @action_icons, '<span class="vr"></span>' if @actions;
 }
+push @action_icons, map { $make_icon->($_) } @actions;
 
 # make date unbreakable
-$date = $m->interp->apply_escapes( $date, 'h' );
+$date = $i->apply_escapes( $date, 'h' );
 $date =~ s/\s/&nbsp;/g;
 </%INIT>
