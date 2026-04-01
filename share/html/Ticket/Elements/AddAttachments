@@ -147,6 +147,12 @@ registerLoadListener(function(evt) {
     attachDropzone.on('removedfile', function(file) {
         jQuery.post( RT.Config.WebHomePath + '/Helpers/Upload/Delete', { Name: this._renameFile(file), Token: jQuery('#attach-dropzone').closest('form').find('input[name=Token]').val() }, 'json');
     });
+    // When HTMX swaps the DOM (e.g. page navigation), Dropzone fires removedfile
+    // during widget teardown, which would DELETE already-uploaded files before
+    // the form submits. Disable the handler on submit button click.
+    jQuery('#attach-dropzone').closest('form').find(':submit').on('click', function() {
+        attachDropzone.off('removedfile');
+    });
     attachDropzone.on('dragenter', function() {
         jQuery('#attach-dropzone').addClass('scaled');
     });
