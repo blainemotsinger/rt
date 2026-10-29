@@ -376,7 +376,8 @@ sub HasRight {
 =head2 HasRights
 
 Returns a hash reference with all rights this principal has on an
-object. Takes Object as a named argument.
+object. Takes Object as a named argument. EquivObjects may also be passed;
+they are part of the cache key, because they change the result.
 
 Main use case of this method is the following:
 
@@ -408,6 +409,16 @@ sub HasRights {
     }
 
     my $cache_key = $self->id .';:;'. ref($object) .'-'. $object->id;
+
+    # Explicit equivalence objects change the answer, so a result computed
+    # with them must not be stored under the plain object key. HasRight()
+    # reads that plain key as a fast path and would otherwise get rights
+    # granted through objects the caller never asked about.
+    if ( $args{'EquivObjects'} && @{ $args{'EquivObjects'} } ) {
+        $cache_key .= ';:;EquivObjects;:;'
+            . join ';:;', map { $self->_ReferenceId($_) } @{ $args{'EquivObjects'} };
+    }
+
     my $cached = $_ACL_CACHE->{ $cache_key };
     return $cached if $cached;
 
