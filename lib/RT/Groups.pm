@@ -81,6 +81,11 @@ sub Table { 'Groups'}
 use RT::Group;
 use RT::Users;
 
+# Cached result of UserDefinedGroupsWithCurrentUser, keyed by current user id.
+# RT::Principal::InvalidateMembershipCache clears it, so a membership write or
+# the end of a request drops it.
+our %WITH_CURRENT_USER_CACHE;
+
 # XXX: below some code is marked as subject to generalize in Groups, Users classes.
 # RUZ suggest name Principals::Generic or Principals::Base as abstract class, but
 # Jesse wants something that doesn't imply it's a Principals.pm subclass.
@@ -218,6 +223,32 @@ sub WithCurrentUser {
         PrincipalId => $self->CurrentUser->PrincipalId,
         Recursively => 1,
     );
+}
+
+=head2 UserDefinedGroupsWithCurrentUser
+
+Returns the user-defined groups the given current user is a member of,
+recursively. The list is cached per current user id until
+L<RT::Principal/InvalidateMembershipCache> runs, which membership writes and
+end-of-request cleanup do. Callers that build the same list several times in
+one request (the menu does it for saved searches and for dashboards) therefore
+share one query.
+
+=cut
+
+sub UserDefinedGroupsWithCurrentUser {
+    my $class        = shift;
+    my $current_user = shift;
+
+    my $key = $current_user->id;
+    return @{ $WITH_CURRENT_USER_CACHE{$key} }
+        if exists $WITH_CURRENT_USER_CACHE{$key};
+
+    my $groups = $class->new($current_user);
+    $groups->LimitToUserDefinedGroups;
+    $groups->WithCurrentUser;
+
+    return @{ $WITH_CURRENT_USER_CACHE{$key} = [ @{ $groups->ItemsArrayRef } ] };
 }
 
 sub WithoutMember {

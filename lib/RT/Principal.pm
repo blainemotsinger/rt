@@ -845,6 +845,7 @@ changes, and from L</InvalidateACLCache>, since memberships decide rights.
 
 sub InvalidateMembershipCache {
     %GROUP_MEMBERSHIP_CACHE = ();
+    %RT::Groups::WITH_CURRENT_USER_CACHE = ();
 }
 
 

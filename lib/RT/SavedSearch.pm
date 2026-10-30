@@ -333,11 +333,11 @@ sub _PrivacyObjects {
     my $self        = shift;
     my $CurrentUser = $self->CurrentUser;
 
-    my $groups = RT::Groups->new($CurrentUser);
-    $groups->LimitToUserDefinedGroups;
-    $groups->WithCurrentUser;
-
-    return ( $CurrentUser->UserObj, @{ $groups->ItemsArrayRef() }, RT->System );
+    return (
+        $CurrentUser->UserObj,
+        RT::Groups->UserDefinedGroupsWithCurrentUser($CurrentUser),
+        RT->System,
+    );
 }
 
 sub ObjectsForLoading {

@@ -275,10 +275,8 @@ sub _PrivacyObjects {
     my $CurrentUser = $self->CurrentUser;
     push @objects, $CurrentUser->UserObj;
 
-    my $groups = RT::Groups->new($CurrentUser);
-    $groups->LimitToUserDefinedGroups;
-    $groups->WithCurrentUser;
-    push @objects, @{ $groups->ItemsArrayRef };
+    push @objects,
+        RT::Groups->UserDefinedGroupsWithCurrentUser($CurrentUser);
 
     push @objects, RT::System->new($CurrentUser);
 
