@@ -66,6 +66,14 @@ use RT::User;
 
 # Set up the ACL cache on startup
 our $_ACL_CACHE;
+
+# Recursive group memberships, keyed by principal id, as { group principal id =>
+# CachedGroupMembers row id }. RT::Group::HasMemberRecursively fills one entry
+# with a single query and then answers from it. It is an ACL input, so it is
+# dropped by the same invalidation that clears the rights cache, and by
+# RT::GroupMember after a membership write.
+our %GROUP_MEMBERSHIP_CACHE;
+
 InvalidateACLCache();
 
 require RT::ACE;
@@ -798,7 +806,19 @@ Cleans out and reinitializes the user rights cache
 =cut
 
 sub InvalidateACLCache {
-    $_ACL_CACHE = {}
+    $_ACL_CACHE = {};
+    InvalidateMembershipCache();
+}
+
+=head2 InvalidateMembershipCache
+
+Cleans out the cached recursive group memberships. Called whenever a membership
+changes, and from L</InvalidateACLCache>, since memberships decide rights.
+
+=cut
+
+sub InvalidateMembershipCache {
+    %GROUP_MEMBERSHIP_CACHE = ();
 }
 
 

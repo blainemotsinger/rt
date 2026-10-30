@@ -1149,13 +1149,21 @@ sub HasMemberRecursively {
     }
     return undef unless $id;
 
-    my $member_obj = RT::CachedGroupMember->new( $self->CurrentUser );
-    $member_obj->LoadByCols(
-        MemberId => $id, 
-        GroupId  => $self->PrincipalId
-    );
+    # CachedGroupMembers is an unrolled closure table, so one query returns
+    # every group this principal is recursively in. The cache is dropped by
+    # RT::Principal::InvalidateMembershipCache when membership changes.
+    my $memberships = $RT::Principal::GROUP_MEMBERSHIP_CACHE{$id};
+    unless ($memberships) {
+        my $cached = RT::CachedGroupMembers->new( $self->CurrentUser );
+        $cached->Limit( FIELD => 'MemberId', VALUE => $id );
+        $cached->Limit( FIELD => 'Disabled', VALUE => 0 );
+        $memberships = $RT::Principal::GROUP_MEMBERSHIP_CACHE{$id}
+            = { map { $_->GroupId => $_->id } @{ $cached->ItemsArrayRef } };
+    }
 
-    if ( my $member_id = $member_obj->id ) {
+    # Disabled memberships are excluded above: they exist in the closure table
+    # but must not confer membership (or the rights that come with it).
+    if ( my $member_id = $memberships->{ $self->PrincipalId } ) {
         return $member_id;
     }
     elsif ( ( $self->Domain // '' ) eq 'RT::Ticket-Role' ) {

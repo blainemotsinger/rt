@@ -236,6 +236,10 @@ sub Create {
         return (undef);
     }
 
+    # The loop check above may have filled the cached memberships before the
+    # rows were written; drop them now that the closure table has changed.
+    RT::Principal->InvalidateMembershipCache();
+
     $RT::Handle->Commit() unless ($args{'InsideTransaction'});
 
     return ($id);
@@ -295,6 +299,8 @@ sub _StashUser {
     unless ($cached_id) {
         return (undef);
     }
+
+    RT::Principal->InvalidateMembershipCache();
 
     return ($id);
 }
