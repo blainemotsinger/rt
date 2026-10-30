@@ -462,27 +462,7 @@ sub HasRights {
         }
     }
 
-    my @enabled_roles;
-    for my $role ( @$roles ) {
-        if ( $role =~ /^RT::CustomRole-(\d+)$/ ) {
-            my $custom_role = RT::CustomRole->new( RT->SystemUser );
-            $custom_role->Load( $1 );
-            if ( $custom_role->id && !$custom_role->Disabled ) {
-                my $added;
-                for my $object ( @{ $args{'EquivObjects'} } ) {
-                    next unless $object->isa('RT::Queue') || $object->isa('RT::Catalog');
-                    if ( $custom_role->IsAdded( $object->id ) ) {
-                        $added = 1;
-                        last;
-                    }
-                }
-                push @enabled_roles, $role if $added;
-            }
-        }
-        else {
-            push @enabled_roles, $role;
-        }
-    }
+    my @enabled_roles = $self->_EnabledCustomRoles( $roles, $args{'EquivObjects'} );
 
     if ( @enabled_roles ) {
 
@@ -684,6 +664,66 @@ sub _HasRoleRightQuery {
     return ( $query, @bind_values );
 }
 
+=head2 _EnabledCustomRoles
+
+Takes the role group names returned by the rights queries and the equivalence
+objects for the request, and returns the names that still apply. A normal role
+always applies; a custom role only if it is not disabled and has been added to
+at least one queue or catalog in the equivalence set.
+
+The role names come from an ACL query, so there can be one per custom role on
+the instance. Loading every role and asking C<IsAdded> for every object cost
+two queries per role; this answers the whole set with one query.
+
+=cut
+
+sub _EnabledCustomRoles {
+    my $self = shift;
+    my ( $roles, $objects ) = @_;
+
+    my @custom_ids = map { /^RT::CustomRole-(\d+)$/ ? $1 : () } @$roles;
+    return @$roles if !@custom_ids;
+
+    my %object_ids;
+    for my $object ( @$objects ) {
+        next if !$object->isa('RT::Queue') && !$object->isa('RT::Catalog');
+        $object_ids{ $object->id } = 1;
+    }
+
+    # No queue or catalog in the equivalence set means no custom role can apply.
+    my $plain_roles = grep { !/^RT::CustomRole-\d+$/ } @$roles;
+    return $plain_roles if !%object_ids;
+
+    my $roles_table = $self->can('QuotedTableName')
+        ? $self->QuotedTableName('ObjectCustomRoles') : 'ObjectCustomRoles';
+    my $custom_roles_table = $self->can('QuotedTableName')
+        ? $self->QuotedTableName('CustomRoles') : 'CustomRoles';
+
+    my $query =
+        "SELECT DISTINCT $roles_table.CustomRole"
+        . " FROM $roles_table, $custom_roles_table WHERE "
+        . "$custom_roles_table.id = $roles_table.CustomRole "
+        . "AND $custom_roles_table.Disabled = ? "
+        . "AND $roles_table.ObjectId IN (" . join( ',', ('?') x keys %object_ids ) . ") "
+        . "AND $roles_table.CustomRole IN (" . join( ',', ('?') x @custom_ids ) . ")";
+
+    my %enabled;
+    if ( my $sth = $self->_Handle->SimpleQuery(
+        $query, 0, ( keys %object_ids ), @custom_ids
+    ) ) {
+        $enabled{$_->[0]} = 1 for @{ $sth->fetchall_arrayref };
+    }
+    else {
+        # Deny the custom roles rather than answer from a failed query.
+        $RT::Logger->warning( $RT::Handle->dbh->errstr );
+        return $plain_roles;
+    }
+
+    return grep {
+        !/^RT::CustomRole-(\d+)$/ || $enabled{$1}
+    } @$roles;
+}
+
 =head2 RolesWithRight
 
 Returns list with names of roles that have right on
@@ -723,27 +763,7 @@ sub RolesWithRight {
         return ();
     }
 
-    my @enabled_roles;
-    for my $role ( @$roles ) {
-        if ( $role =~ /^RT::CustomRole-(\d+)$/ ) {
-            my $custom_role = RT::CustomRole->new( RT->SystemUser );
-            $custom_role->Load( $1 );
-            if ( $custom_role->id && !$custom_role->Disabled ) {
-                my $added;
-                for my $object ( @{ $args{'EquivObjects'} } ) {
-                    next unless $object->isa('RT::Queue') || $object->isa('RT::Catalog');
-                    if ( $custom_role->IsAdded( $object->id ) ) {
-                        $added = 1;
-                        last;
-                    }
-                }
-                push @enabled_roles, $role if $added;
-            }
-        }
-        else {
-            push @enabled_roles, $role;
-        }
-    }
+    my @enabled_roles = $self->_EnabledCustomRoles( $roles, $args{'EquivObjects'} );
 
     return @enabled_roles;
 }
