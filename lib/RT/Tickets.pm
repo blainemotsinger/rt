@@ -3162,6 +3162,10 @@ sub CurrentUserCanSee {
             $role_group_alias = $self->_RoleGroupsJoin( New => 1 );
             $cgm_alias = $self->_GroupMembersJoin( GroupsAlias => $role_group_alias );
 
+            # Ticket role groups are not unrolled into CachedGroupMembers: a
+            # group added as a watcher has a row for the group, not for its
+            # members. The user's own id plus the groups they are in is what
+            # makes a group watcher count as playing the role.
             my $groups = RT::Groups->new( RT->SystemUser );
             $groups->LimitToUserDefinedGroups;
             $groups->WithMember( PrincipalId => $id, Recursively => 1 );

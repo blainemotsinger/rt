@@ -650,7 +650,10 @@ sub _HasRoleRightQuery {
 # See if the principal is a member of the group recursively or _is the rightholder_
 # never find recursively disabled group members
 # also, check to see if the right is being granted _directly_ to this principal,
-#  as is the case when we want to look up group rights
+#  as is the case when we want to look up group rights.
+# Ticket role groups are not unrolled into CachedGroupMembers (see _InsertCGM),
+# so a group added to a ticket role has a row for the group, not for its
+# members. The group list is what makes those members count.
         . "AND Principals.id = CachedGroupMembers.GroupId "
         . "AND CachedGroupMembers.MemberId IN (" . ( join ',', ('?') x (1 + @{ $groups->ItemsArrayRef } ) ) . ") "
     ;
