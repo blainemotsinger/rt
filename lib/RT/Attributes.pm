@@ -195,8 +195,10 @@ sub LimitToObject {
 
     my $type = $obj->isa("RT::CurrentUser") ? "RT::User" : ref($obj);
 
-    $self->Limit(FIELD => 'ObjectType', OPERATOR=> '=', VALUE => $type, ENTRYAGGREGATOR => 'OR');
-    $self->Limit(FIELD => 'ObjectId', OPERATOR=> '=', VALUE => $obj->id, ENTRYAGGREGATOR => 'OR', QUOTEVALUE => 0);
+    # ObjectType and ObjectId are different fields, so SearchBuilder puts them
+    # in separate groups and ANDs the groups. No aggregator is needed here.
+    $self->Limit(FIELD => 'ObjectType', OPERATOR => '=', VALUE => $type);
+    $self->Limit(FIELD => 'ObjectId', OPERATOR => '=', VALUE => $obj->id, QUOTEVALUE => 0);
 
 }
 

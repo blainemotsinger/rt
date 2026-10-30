@@ -148,21 +148,24 @@ sub LimitToPrincipal {
                      ALIAS2 => $cgm,
                      FIELD2 => 'GroupId'
                    );
+
+        # Disabled and MemberId are different fields, so SearchBuilder puts them
+        # in separate groups and joins the groups with AND. No aggregator needed.
         $self->Limit( ALIAS => $cgm,
                       FIELD => 'Disabled',
                       VALUE => 0 );
-        $self->Limit( ALIAS           => $cgm,
-                      FIELD           => 'MemberId',
-                      OPERATOR        => '=',
-                      VALUE           => $args{'Id'},
-                      ENTRYAGGREGATOR => 'OR'
+        $self->Limit( ALIAS    => $cgm,
+                      FIELD    => 'MemberId',
+                      OPERATOR => '=',
+                      VALUE    => $args{'Id'},
                     );
     } else {
+        # PrincipalType and PrincipalId are also different fields: they are
+        # ANDed by group, not by an aggregator.
         if ( defined $args{'Type'} ) {
-            $self->Limit( FIELD           => 'PrincipalType',
-                          OPERATOR        => '=',
-                          VALUE           => $args{'Type'},
-                          ENTRYAGGREGATOR => 'OR'
+            $self->Limit( FIELD    => 'PrincipalType',
+                          OPERATOR => '=',
+                          VALUE    => $args{'Type'},
                         );
         }
 
@@ -177,10 +180,9 @@ sub LimitToPrincipal {
             $group->LoadACLEquivalenceGroup($princ);
             $args{'Id'} = $group->PrincipalId;
         }
-        $self->Limit( FIELD           => 'PrincipalId',
-                      OPERATOR        => '=',
-                      VALUE           => $args{'Id'},
-                      ENTRYAGGREGATOR => 'OR'
+        $self->Limit( FIELD    => 'PrincipalId',
+                      OPERATOR => '=',
+                      VALUE    => $args{'Id'},
                     );
     }
 }
