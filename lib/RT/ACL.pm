@@ -196,7 +196,19 @@ sub AddRecord {
     return $self->SUPER::AddRecord( $record )
         if $record->CurrentUser->PrincipalObj->Id == RT->SystemUser->Id;
 
-    my $obj = $record->Object;
+    # Every row in a listing usually points at the same object, and loading it is
+    # the expensive half of the check below. Key on the raw columns because
+    # ->Object reads them with __Value too: the _Value visibility gate must not
+    # decide whether a row is checked or silently skipped here.
+    my $object_key = $record->__Value('ObjectType') . '-' . $record->__Value('ObjectId');
+    my $obj = $self->{_acl_object}{$object_key};
+    if ( !$obj ) {
+        $obj = $record->Object;
+        $self->{_acl_object}{$object_key} = $obj;
+    }
+
+    return unless $obj;
+
     return unless $self->CurrentUser->HasRight( Right  => 'ShowACL',
                                                 Object => $obj )
                or $self->CurrentUser->HasRight( Right  => 'ModifyACL',
