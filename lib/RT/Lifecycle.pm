@@ -880,6 +880,10 @@ our @WARNINGS;
 sub FillCache {
     my $self = shift;
 
+    # AvailableRights embeds lifecycle status rights, so its memo cannot outlive
+    # a lifecycle rebuild.
+    %RT::Record::Role::Rights::AVAILABLE_RIGHTS_CACHE = ();
+
     @WARNINGS = ();
 
     my $map = RT->Config->Get('Lifecycles') or return;

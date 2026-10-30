@@ -67,6 +67,10 @@ RT::Record::Role::Rights - Common methods for records which can provide rights
 
 with 'RT::Record::Role';
 
+# C<class;:;lifecycle type;:;lifecycle> => hashref of rights. Cleared whenever a
+# right is registered and whenever the lifecycle cache is rebuilt.
+our %AVAILABLE_RIGHTS_CACHE;
+
 =head1 PROVIDES
 
 =cut
@@ -94,6 +98,9 @@ sub AddRight {
         Category    => $category,
         Description => $description,
     };
+
+    undef $RT::ACE::RIGHTS_BY_LC;
+    %AVAILABLE_RIGHTS_CACHE = ();
 }
 
 =head2 AvailableRights
@@ -107,15 +114,34 @@ sub AvailableRights {
     my $self = shift;
     my $class = ref($self) || $self;
 
+    # Fetch the lifecycle once: RT::Queue::Lifecycle goes through _Value, which
+    # runs a SeeQueue check. Calling it twice would double that work, and the
+    # lifecycle name is part of the cache key because a user who cannot see the
+    # queue gets undef here and therefore a different (smaller) right set.
+    my ( $lifecycle_type, $lifecycle );
+    if ( blessed($self) && $self->DOES('RT::Record::Role::Lifecycle') ) {
+        $lifecycle_type = $self->LifecycleType;
+        $lifecycle      = $self->Lifecycle;
+    }
+
+    my $cache_key = $class;
+    if ( defined $lifecycle_type ) {
+        $cache_key .= ';:;' . $lifecycle_type . ';:;' . ( $lifecycle // '' );
+    }
+
+    if ( $AVAILABLE_RIGHTS_CACHE{$cache_key} ) {
+        return $AVAILABLE_RIGHTS_CACHE{$cache_key};
+    }
+
     my %rights;
-    if ( blessed $self && $self->DOES('RT::Record::Role::Lifecycle') ) {
-        %rights = RT::Lifecycle->RightsDescription( $self->LifecycleType, $self->Lifecycle );
+    if ( defined $lifecycle_type ) {
+        %rights = RT::Lifecycle->RightsDescription( $lifecycle_type, $lifecycle );
     }
 
     $rights{ $_->{Name} } = $_->{Description}
         for grep { $_->{Category} ne 'Status' } values %{ $RT::ACE::RIGHTS{$class} || {} };
 
-    return \%rights;
+    return $AVAILABLE_RIGHTS_CACHE{$cache_key} = \%rights;
 }
 
 =head2 RightCategories

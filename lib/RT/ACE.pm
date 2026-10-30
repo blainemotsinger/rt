@@ -77,6 +77,10 @@ require RT::Groups;
 
 our %RIGHTS;
 
+# lc right name => canonical name, built once from %RIGHTS. Extensions may
+# register rights after this is built, so a miss triggers a rebuild.
+our $RIGHTS_BY_LC;
+
 my (@_ACL_CACHE_HANDLERS);
 
 
@@ -506,11 +510,42 @@ the correct case. If it's not found, will return undef.
 sub CanonicalizeRightName {
     my $self = shift;
     my $name = shift;
-    for my $class (sort keys %RIGHTS) {
-        return $RIGHTS{$class}{ lc $name }{Name}
-            if $RIGHTS{$class}{ lc $name };
+    my $lc   = lc $name;
+
+    my $map = $RIGHTS_BY_LC || $self->_BuildRightsByLC;
+    if ( exists $map->{$lc} ) {
+        return $map->{$lc};
     }
-    return undef;
+
+    # A miss may only mean the right was registered after the map was built
+    # (extensions can write to %RIGHTS directly), so rebuild once and retry.
+    $map = $self->_BuildRightsByLC;
+    return $map->{$lc};
+}
+
+=head2 _BuildRightsByLC
+
+Builds C<$RIGHTS_BY_LC> from C<%RIGHTS>. Classes are visited in sorted order and
+the first registration of a name wins, which is the same precedence the old
+per-call linear scan had.
+
+=cut
+
+sub _BuildRightsByLC {
+    my $self = shift;
+
+    my %map;
+    for my $class ( sort keys %RIGHTS ) {
+        my $rights = $RIGHTS{$class} || {};
+        for my $lc ( keys %$rights ) {
+            if ( exists $map{$lc} ) {
+                next;
+            }
+            $map{$lc} = $rights->{$lc}{Name};
+        }
+    }
+
+    return $RIGHTS_BY_LC = \%map;
 }
 
 
@@ -586,23 +621,49 @@ sub _Set {
 
 
 
+=head2 _ACLCanRead
+
+Returns true when the current user is allowed to read the columns of this ACE.
+The check is computed once per ACE per current user: every field read goes
+through L</_Value>, and the membership and rights lookups are not free.
+
+=cut
+
+sub _ACLCanRead {
+    my $self    = shift;
+    my $user_id = $self->CurrentUser->id;
+
+    if ( exists $self->{_cached}{ACLCanRead}{$user_id} ) {
+        return $self->{_cached}{ACLCanRead}{$user_id};
+    }
+
+    my $can_read = 0;
+
+    if ( $user_id == RT->SystemUser->id ) {
+        $can_read = 1;
+    }
+    elsif ( $self->PrincipalObj->IsGroup ) {
+        my $group = $self->PrincipalObj->Object;
+        if ( $group && $group->HasMemberRecursively( $self->CurrentUser->PrincipalObj ) ) {
+            $can_read = 1;
+        }
+    }
+
+    if ( !$can_read && $self->CurrentUser->HasRight( Right => 'ShowACL', Object => $self->Object ) ) {
+        $can_read = 1;
+    }
+
+    return $self->{_cached}{ACLCanRead}{$user_id} = $can_read;
+}
+
 sub _Value {
     my $self = shift;
-    return $self->__Value(@_) if $self->CurrentUser->Id == RT->SystemUser->Id;
 
-    if ( $self->PrincipalObj->IsGroup
-            && $self->PrincipalObj->Object->HasMemberRecursively(
-                                                $self->CurrentUser->PrincipalObj
-            )
-      ) {
-        return ( $self->__Value(@_) );
-    }
-    elsif ( $self->CurrentUser->HasRight(Right => 'ShowACL', Object => $self->Object) ) {
-        return ( $self->__Value(@_) );
-    }
-    else {
+    if ( !$self->_ACLCanRead ) {
         return undef;
     }
+
+    return $self->__Value(@_);
 }
 
 
