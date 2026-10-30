@@ -295,8 +295,10 @@ sub HasRight {
                  @_,
                );
 
+    my $self_id = $self->id;
+
     # RT's SystemUser always has all rights
-    if ( $self->id == RT->SystemUser->id ) {
+    if ( $self_id == RT->SystemUser->id ) {
         return 1;
     }
 
@@ -316,14 +318,16 @@ sub HasRight {
 
     if ( $self->__Value('Disabled') ) {
         $RT::Logger->debug(   "Disabled User #"
-                            . $self->id
+                            . $self_id
                             . " failed access check for "
                             . $args{'Right'} );
         return (undef);
     }
 
-    if ( eval { $args{'Object'}->id } ) {
-        push @{ $args{'EquivObjects'} }, $args{'Object'};
+    my $object    = $args{'Object'};
+    my $object_id = eval { $object->id };
+    if ($object_id) {
+        push @{ $args{'EquivObjects'} }, $object;
     } else {
         $RT::Logger->crit("HasRight called with no valid object");
         return (undef);
@@ -331,14 +335,14 @@ sub HasRight {
 
     {
         my $cached = $_ACL_CACHE->{
-            $self->id .';:;'. ref($args{'Object'}) .'-'. $args{'Object'}->id
+            $self_id .';:;'. ref($object) .'-'. $object_id
         };
         return $cached->{'SuperUser'} || $cached->{ $args{'Right'} }
             if $cached;
 
         if ( ref $args{Object} ne 'RT::System' ) {
             my $cached =
-              $_ACL_CACHE->{ $self->id . ';:;'
+              $_ACL_CACHE->{ $self_id . ';:;'
                   . 'RT::System' . '-'
                   . $RT::System->id };
             return 1
@@ -348,8 +352,8 @@ sub HasRight {
     }
 
     unshift @{ $args{'EquivObjects'} },
-        $args{'Object'}->ACLEquivalenceObjects;
-    unshift @{ $args{'EquivObjects'} }, $RT::System unless $args{'Object'}->isa('RT::System');
+        $object->ACLEquivalenceObjects;
+    unshift @{ $args{'EquivObjects'} }, $RT::System unless $object->isa('RT::System');
 
     # If we've cached a win or loss for this lookup say so
 
@@ -357,12 +361,10 @@ sub HasRight {
 # 1) full_hashkey - key for any result and for full combination of uid, right and objects
 # 2) short_hashkey - one key for each object to store positive results only, it applies
 # only to direct group rights and partly to role rights
-    my $full_hashkey = join (";:;", $self->id, $args{'Right'});
-    foreach ( @{ $args{'EquivObjects'} } ) {
-        my $ref_id = $self->_ReferenceId($_);
-        $full_hashkey .= ";:;".$ref_id;
-
-        my $short_hashkey = join(";:;", $self->id, $args{'Right'}, $ref_id);
+    my @ref_ids = map { $self->_ReferenceId($_) } @{ $args{'EquivObjects'} };
+    my $full_hashkey = join (";:;", $self_id, $args{'Right'}, @ref_ids);
+    foreach my $ref_id (@ref_ids) {
+        my $short_hashkey = join(";:;", $self_id, $args{'Right'}, $ref_id);
         my $cached_answer = $_ACL_CACHE->{ $short_hashkey } or next;
         return 1 if $cached_answer > 0;
     }
@@ -375,7 +377,7 @@ sub HasRight {
     my ( $hitcount, $via_obj ) = $self->_HasRight(%args);
 
     $_ACL_CACHE->{ $full_hashkey } = $hitcount ? 1 : -1;
-    $_ACL_CACHE->{ join ';:;',  $self->id, $args{'Right'}, $via_obj } = 1
+    $_ACL_CACHE->{ join ';:;',  $self_id, $args{'Right'}, $via_obj } = 1
         if $via_obj && $hitcount;
 
     return ($hitcount);
@@ -411,12 +413,13 @@ sub HasRights {
     );
     return {} if $self->__Value('Disabled');
 
-    my $object = $args{'Object'};
-    unless ( eval { $object->id } ) {
+    my $object    = $args{'Object'};
+    my $object_id = eval { $object->id };
+    unless ($object_id) {
         $RT::Logger->crit("HasRights called with no valid object");
     }
 
-    my $cache_key = $self->id .';:;'. ref($object) .'-'. $object->id;
+    my $cache_key = $self->id .';:;'. ref($object) .'-'. $object_id;
 
     # Explicit equivalence objects change the answer, so a result computed
     # with them must not be stored under the plain object key. HasRight()
