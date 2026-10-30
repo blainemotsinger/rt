@@ -261,10 +261,20 @@ sub _DeserializeContent {
 Returns this attribute's content. If it's a scalar, returns a scalar
 If it's data structure returns a ref to that data structure.
 
+The value is deserialized once per attribute object and cached. Callers must
+not modify a returned hashref or arrayref in place: the change would be visible
+to every later reader of this object and would never reach the database. Copy
+before mutating, as L<RT::User/Preferences> does.
+
 =cut
 
 sub Content {
     my $self = shift;
+
+    if ( exists $self->{_cached}{Content} ) {
+        return $self->{_cached}{Content};
+    }
+
     # Here we call _Value to get the ACL check.
     my $content = $self->_Value('Content');
     if ( ($self->__Value('ContentType') || '') eq 'storable') {
@@ -274,7 +284,7 @@ sub Content {
         }
     } 
 
-    return($content);
+    return( $self->{_cached}{Content} = $content );
 
 }
 
@@ -303,6 +313,7 @@ sub SetContent {
     my ( $ok, $msg )
         = $self->_Set( Field => 'Content', Value => $content, RecordTransaction => $args{RecordTransaction} );
     if ($ok) {
+        delete $self->{_cached}{Content};
         $self->_SyncLinks if $args{SyncLinks};
         return ( $ok, $self->loc("Attribute updated") );
     }
@@ -592,7 +603,8 @@ sub CurrentUserHasRight {
 
 =head1 TODO
 
-We should be deserializing the content on load and then never again, rather than at every access
+Content is now deserialized once per attribute object (see L</Content>). What is
+left is the write side: every SetContent freezes the whole structure again.
 
 =cut
 

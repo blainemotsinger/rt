@@ -2458,6 +2458,9 @@ sub Preferences {
     }
 
     if (ref $default eq 'HASH') {
+        # Content is cached on the attribute; copy before filling in defaults so
+        # they do not become part of the cached value for later readers.
+        $content = { %$content };
         for (keys %$default) {
             exists $content->{$_} or $content->{$_} = $default->{$_};
         }
