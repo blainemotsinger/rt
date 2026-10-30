@@ -216,13 +216,14 @@ sub Portlets {
 
 =head2 Dashboards
 
-Returns a list of loaded sub-dashboards
+Returns a list of loaded sub-dashboards. Portlets that no longer load, such as
+one pointing at a deleted dashboard, are skipped.
 
 =cut
 
 sub Dashboards {
     my $self = shift;
-    return map {
+    return grep { $_->id } map {
         my $dashboard = RT::Dashboard->new($self->CurrentUser);
         $dashboard->LoadById($_->{id});
         $dashboard
@@ -231,13 +232,14 @@ sub Dashboards {
 
 =head2 SavedSearches
 
-Returns a list of loaded saved searches
+Returns a list of loaded saved searches. Portlets that no longer load are
+skipped.
 
 =cut
 
 sub SavedSearches {
     my $self = shift;
-    return map {
+    return grep { $_->id } map {
         my $search = RT::SavedSearch->new( $self->CurrentUser );
         $search->Load( $_->{id} );
         $search

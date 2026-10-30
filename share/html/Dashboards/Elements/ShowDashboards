@@ -62,6 +62,10 @@
 % foreach my $Object (@Objects) {
 %   my $Dashboards = $Object->Dashboards;
 %   $Dashboards->FindAllRows if $IncludeDisabled;
+%   # Count once, before paging, and hand the total to CollectionList so it does
+%   # not run a second count of the same collection. The count also decides
+%   # whether to show the Update button below.
+%   my $total = $ShowForm ? $Dashboards->CountAll : undef;
 %   $Dashboards->RowsPerPage( $Rows ) if $Rows;
 %   $Dashboards->GotoPage( $Page - 1 ) if $Page;
 %   my $title;
@@ -73,9 +77,9 @@
 %   $title =~ s/([\\'])/\\$1/g;
 %   $title = $m->interp->apply_escapes($title, 'h');
 %   my $format = qq{'<a href="__WebPath__/__ShowURL__">__Name__</a>/TITLE:$title', __Subscription__,};
-%   if ( $ShowForm && RT::Dashboard->new( $session{CurrentUser} )->CurrentUserCanModify($Object) ) {
+%   if ( $ShowForm && $CurrentUserDashboard->CurrentUserCanModify($Object) ) {
 %       $format .= q{__DisabledEdit__};
-%       $ShowSubmit ||= 1 if $Dashboards->Count;
+%       $ShowSubmit ||= 1 if $total;
 %   }
 %   else {
 %       $format .= q{__Disabled__};
@@ -85,6 +89,7 @@
     Format => $format,
     Collection => $Dashboards,
     PassArguments => [qw(IncludeDisabled RowsPerPage id)],
+    ( defined $total ? ( TotalFound => $total ) : () ),
 &>
 % }
 % if ( $ShowForm ) {
@@ -96,6 +101,9 @@
 <%init>
 my $ShowSubmit = 0;
 my @Objects = $Object ? $Object : RT::Dashboard->new($session{CurrentUser})->ObjectsForLoading();
+
+# One object for the per-object right checks; it carries no dashboard state.
+my $CurrentUserDashboard = RT::Dashboard->new( $session{CurrentUser} );
 </%init>
 
 <%ARGS>
