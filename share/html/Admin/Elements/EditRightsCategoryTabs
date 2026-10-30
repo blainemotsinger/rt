@@ -50,29 +50,39 @@ $Context
 $Principal => undef
 $id
 $acldesc => ''
+$CurrentRights      => undef
+$AvailableRights    => undef
+$RightCategories    => undef
 </%args>
 <%init>
 # Find all our available rights...
-my (%available_rights, %categories);
-if ( blessed($Context) and $Context->can('AvailableRights') ) {
+my %available_rights;
+if ( $AvailableRights ) {
+    %available_rights = %$AvailableRights;
+}
+elsif ( blessed($Context) and $Context->can('AvailableRights') ) {
     %available_rights = %{$Context->AvailableRights( $Principal ? $Principal->PrincipalObj : undef )};
 } else {
     %available_rights = ( loc('System Error') => loc("No rights found") );
 }
 
 # ...and their categories
+my %categories;
 if ( blessed($Context) and $Context->can('RightCategories') ) {
-    my %right_categories = %{$Context->RightCategories};
+    my $right_categories = $RightCategories || $Context->RightCategories;
 
     for my $right (keys %available_rights) {
-        my $category = $right_categories{$right} || 'Miscellaneous'; # loc
+        my $category = $right_categories->{$right} || 'Miscellaneous'; # loc
         push @{$categories{$category}}, $right;
     }
 }
 
 # Find all the current rights for this principal
 my %current_rights;
-if ($Principal) {
+if ( $CurrentRights ) {
+    %current_rights = %$CurrentRights;
+}
+elsif ($Principal) {
     my $acls = RT::ACL->new($session{'CurrentUser'});
     $acls->LimitToObject( $Context );
     $acls->LimitToPrincipal( Id => $Principal->PrincipalId );

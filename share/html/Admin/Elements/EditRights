@@ -76,6 +76,58 @@ if ($anchor =~ /AddPrincipal/) {
         }
     }
 }
+
+# One ACL query for the whole page. Querying per principal made this
+# O(principals x ACEs); grouping in Perl is O(ACEs).
+my %rights_by_principal;
+if ( blessed($Context) ) {
+    my $acls = RT::ACL->new( $session{'CurrentUser'} );
+    $acls->LimitToObject($Context);
+    while ( my $ace = $acls->Next ) {
+        my $right = $ace->RightName;
+        next unless $right;
+        $rights_by_principal{ $ace->PrincipalId }{$right} = 1;
+    }
+
+    # RT stores user grants against the user's ACL equivalence group, whose
+    # Instance is the user's principal id. Copy those rights under the user's
+    # own principal id so the rendering loop can look them up directly.
+    my @principal_ids = keys %rights_by_principal;
+    if (@principal_ids) {
+        my $equivalence = RT::Groups->new( RT->SystemUser );
+        $equivalence->Limit( FIELD => 'Domain', VALUE => 'ACLEquivalence', CASESENSITIVE => 0 );
+        $equivalence->Limit( FIELD => 'id', OPERATOR => 'IN', VALUE => \@principal_ids );
+        while ( my $group = $equivalence->Next ) {
+            my $user_principal = $group->Instance;
+            $rights_by_principal{$user_principal} = {
+                %{ $rights_by_principal{ $group->id } || {} },
+                %{ $rights_by_principal{$user_principal} || {} },
+            };
+        }
+    }
+}
+
+# AvailableRights is principal-dependent for role groups (RT::System limits the
+# list to rights the role can actually hold), so cache per role name.
+my $right_categories = ( blessed($Context) && $Context->can('RightCategories') )
+    ? $Context->RightCategories
+    : undef;
+
+my %available_cache;
+my $available_for = sub {
+    my $principal = shift;
+    return undef unless blessed($Context) && $Context->can('AvailableRights');
+
+    my $key = '';
+    if ( $principal && $principal->IsRoleGroup ) {
+        $key = 'role:' . $principal->Object->Name;
+    }
+
+    if ( !exists $available_cache{$key} ) {
+        $available_cache{$key} = $Context->AvailableRights($principal);
+    }
+    return $available_cache{$key};
+};
 </%init>
 %# Principals is an array of arrays, where the inner arrays are like:
 %#      [ 'Category name' => $CollectionObj => 'DisplayColumn' => 1 ]
@@ -165,7 +217,14 @@ if ($obj->isa('RT::Group') and $obj->Domain eq 'UserDefined') {
 }
 </%perl>
           </h3>
-          <& EditRightsCategoryTabs, Context => $Context, Principal => $obj, id => $id &>
+          <& EditRightsCategoryTabs,
+              Context         => $Context,
+              Principal       => $obj,
+              id              => $id,
+              CurrentRights   => $rights_by_principal{ $obj->PrincipalId } || {},
+              AvailableRights => $available_for->( $obj->PrincipalObj ),
+              RightCategories => $right_categories,
+          &>
         </div>
 <%perl>
     }
@@ -175,7 +234,12 @@ if ( $AddPrincipal ) {
 </%perl>
         <div id="acl-AddPrincipal" class="tab-pane fade" role="tabpanel" aria-labelledby="acl-AddPrincipal-tab">
           <h3><&|/l, loc($AddPrincipal) &>Add rights for this [_1]</&></h3>
-          <& EditRightsCategoryTabs, Context => $Context, id => 'acl-AddPrincipal' &>
+          <& EditRightsCategoryTabs,
+              Context         => $Context,
+              id              => 'acl-AddPrincipal',
+              AvailableRights => $available_for->(undef),
+              RightCategories => $right_categories,
+          &>
         </div>
 % }
       </div>
