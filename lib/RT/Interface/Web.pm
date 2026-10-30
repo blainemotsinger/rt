@@ -976,7 +976,11 @@ sub ShowRequestedPage {
     # session-id has been modified in any way
     SendSessionCookie();
 
-    ExpandShortenerCode($ARGS);
+    # A short code on a plain navigation is a person following the link. Inside
+    # an htmx widget refresh it is just the widget's own state, and recording it
+    # as an access would write to Shorteners on every page view.
+    my $track_access = RequestENV('HTTP_HX_REQUEST') ? 0 : 1;
+    ExpandShortenerCode( $ARGS, SetLastAccessed => $track_access );
 
     # precache all system level rights for the current user
     $HTML::Mason::Commands::session{CurrentUser}->PrincipalObj->HasRights( Object => RT->System );
@@ -2683,20 +2687,29 @@ sub RequestENV {
     return $value;
 }
 
-=head2 ExpandShortenerCode $ARGS
+=head2 ExpandShortenerCode $ARGS, %OPTIONS
 
 Expand shortener code and put expanded ones into C<$ARGS>.
+
+C<SetLastAccessed> defaults to true, which updates the row's C<LastAccessed>
+and C<LastAccessedBy> columns. Pass false for internal loads that are not a
+person following the short URL (widget refreshes, portlet settings lookups):
+those happen on every page view and would otherwise write on each render.
 
 =cut
 
 sub ExpandShortenerCode {
     my $ARGS = shift;
+    my %options = ( SetLastAccessed => 1, @_ );
+
     if ( my $sc = $ARGS->{sc} ) {
         my $shortener = RT::Shortener->new( $HTML::Mason::Commands::session{CurrentUser} );
         $shortener->LoadByCode($sc);
         if ( $shortener->Id ) {
             my $content = $shortener->DecodedContent;
-            $shortener->_SetLastAccessed;
+            if ( $options{SetLastAccessed} ) {
+                $shortener->_SetLastAccessed;
+            }
 
             if ( my $search_id = delete $content->{SavedSearchId} ) {
                 my $search = RT::SavedSearch->new( $HTML::Mason::Commands::session{CurrentUser} );
@@ -7998,7 +8011,7 @@ sub GetPortletSearchSettings {
     # MyRT, sort changes, etc.) and should take precedence.
     if ( my $sc = $args{sc} ) {
         my %sc_args = ( sc => $sc );
-        RT::Interface::Web::ExpandShortenerCode( \%sc_args );
+        RT::Interface::Web::ExpandShortenerCode( \%sc_args, SetLastAccessed => 0 );
 
         $settings{Format}  = $sc_args{Format}      if defined $sc_args{Format};
         $settings{Order}   = $sc_args{Order}       if defined $sc_args{Order};

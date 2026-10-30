@@ -163,8 +163,26 @@ sub LoadByContent {
 
 sub DecodedContent {
     my $self    = shift;
-    my $content = shift || $self->Content;
-    my $uri     = URI->new;
+    my $content = shift;
+
+    # An explicit argument is decoded on the spot and never cached, so the memo
+    # can only ever describe this row.
+    if ( defined $content && length $content ) {
+        return $self->_DecodeContent($content);
+    }
+
+    if ( exists $self->{_cached}{DecodedContent} ) {
+        return $self->{_cached}{DecodedContent};
+    }
+
+    return $self->{_cached}{DecodedContent} = $self->_DecodeContent( $self->Content );
+}
+
+sub _DecodeContent {
+    my $self    = shift;
+    my $content = shift;
+
+    my $uri = URI->new;
     $uri->query($content);
 
     my $query = $uri->query_form_hash;
