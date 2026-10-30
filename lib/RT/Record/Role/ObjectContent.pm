@@ -66,10 +66,21 @@ Returns corresponding L<RT::ObjectContent> object, undef if it does not exist.
 
 sub ContentObj {
     my $self = shift;
-    return undef unless $self->CurrentUserCanSee;
+
+    # Dashboard renders ask for this two or three times per portlet. Cache under
+    # _cached so a reload of the record drops it.
+    if ( exists $self->{_cached}{ObjectContent} ) {
+        return $self->{_cached}{ObjectContent};
+    }
+
+    if ( !$self->CurrentUserCanSee ) {
+        $self->{_cached}{ObjectContent} = undef;
+        return undef;
+    }
+
     my $record = RT::ObjectContent->new($self->CurrentUser);
     $record->LoadByCols( ObjectType => ref $self, ObjectId => $self->Id, Disabled => 0 );
-    return $record->Id ? $record : undef;
+    return $self->{_cached}{ObjectContent} = $record->Id ? $record : undef;
 }
 
 =head2 Content
@@ -80,11 +91,16 @@ Returns corresponding L<RT::ObjectContent> object's content, undef if it doesn't
 
 sub Content {
     my $self = shift;
+
+    if ( exists $self->{_cached}{DecodedContent} ) {
+        return $self->{_cached}{DecodedContent};
+    }
+
     # Call ContentObj($self) in case ContentObj is used for other purposes in target modules like RT::Transaction
     if ( my $object_content = ContentObj($self) ) {
-        return $object_content->DecodedContent;
+        return $self->{_cached}{DecodedContent} = $object_content->DecodedContent;
     }
-    return undef;
+    return $self->{_cached}{DecodedContent} = undef;
 }
 
 =head2 SetContent CONTENT
@@ -99,6 +115,11 @@ sub SetContent {
     my $self    = shift;
     my $content = shift;
     my %args = ( RecordTransaction => 1, @_ );
+
+    # Re-read the current content instead of trusting the memo: this method
+    # compares against it and then may replace the row.
+    delete $self->{_cached}{ObjectContent};
+    delete $self->{_cached}{DecodedContent};
 
     my $object_content = ContentObj($self);
 
@@ -156,6 +177,10 @@ sub SetContent {
         }
     }
     RT->DatabaseHandle->Commit;
+
+    # The old row is gone and a new one exists; drop anything cached on $self.
+    delete $self->{_cached}{ObjectContent};
+    delete $self->{_cached}{DecodedContent};
 
     return ( $new_content_id, $self->loc("Content updated") );
 }

@@ -7489,7 +7489,7 @@ found) and possible messages.
 sub GetDefaultDashboard {
     my $user = $session{'CurrentUser'}->UserObj;
 
-    my ($system_default)  = RT::System->new( $session{'CurrentUser'} )->Attributes->Named('DefaultDashboard');
+    my ($system_default)  = RT->System->Attributes->Named('DefaultDashboard');
     my $system_default_id = $system_default ? $system_default->Content : 0;
     my $dashboard_id      = $user->Preferences( DefaultDashboard => $system_default_id ) or return;
 

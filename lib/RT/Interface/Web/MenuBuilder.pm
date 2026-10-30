@@ -134,7 +134,7 @@ sub BuildMainNav {
 
         unless ($dashboards_in_menu->{dashboards}) {
             my ($default_dashboards) =
-                RT::System->new( $current_user )
+                RT->System
                     ->Attributes
                     ->Named('DashboardsInMenu');
             if ($default_dashboards) {
@@ -187,7 +187,7 @@ sub BuildMainNav {
         );
         unless ( $reports_in_menu && ref $reports_in_menu eq 'ARRAY' ) {
             my ($default_reports) =
-                RT::System->new( RT->SystemUser )
+                RT->System
                     ->Attributes
                     ->Named('ReportsInMenu');
             if ($default_reports) {
