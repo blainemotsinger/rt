@@ -77,8 +77,15 @@ sub MailDashboards {
         Recipients => undef,
         Subscription => undef,
         Test => 0,
+        RenderCache => undef,
         @_,
     );
+
+    # Rendered HTML keyed by the inputs that actually change it, so a group
+    # subscription with many recipients renders once per distinct context
+    # instead of once per recipient. Shared for the whole run, so it also
+    # covers repeated subscriptions to the same dashboard.
+    my $render_cache = $args{RenderCache} ||= {};
 
     $RT::Logger->debug("Using time $args{Time} for dashboard generation");
 
@@ -264,6 +271,8 @@ sub MailDashboards {
                         Email        => $email,
                         Subscription => $subscription,
                         From         => $from,
+                        Language     => $lang,
+                        RenderCache  => $render_cache,
                     )
                 };
                 if ( $@ ) {
@@ -378,15 +387,17 @@ sub SendDashboard {
         Email        => undef,
         Subscription => undef,
         DryRun       => 0,
+        Language     => undef,
+        RenderCache  => undef,
         @_,
     );
 
     my $currentuser  = $args{CurrentUser};
     my $context_user = $args{ContextUser} || $currentuser;
     my $subscription = $args{Subscription};
+    my $rendered     = $args{RenderCache} || {};
 
     my $dashboard_content = $subscription->Content || {};
-    my $rows = $dashboard_content->{'Rows'};
 
     my $DashboardId = $subscription->DashboardId;
 
@@ -422,14 +433,34 @@ SUMMARY
     local $HTML::Mason::Commands::session{_session_id}; # Make sure to not touch sessions table
     local $HTML::Mason::Commands::r = RT::Dashboard::FakeRequest->new;
 
-    my $HasResults = undef;
+    # The HTML depends on the dashboard, the users whose rights and portlet
+    # settings are in effect, and the language. Everything else that differs
+    # between recipients (To, subject, headers) is added after the render.
+    my $render_key = join ';:;',
+        $subscription->Id,
+        $dashboard->Id,
+        $currentuser->id,
+        $context_user->id,
+        $args{Language} // '';
 
-    my $content = RunComponent(
-        '/Dashboards/Render.html',
-        id         => $dashboard->Id,
-        Preview    => 0,
-        HasResults => \$HasResults,
-    );
+    my ( $content, $HasResults );
+
+    if ( my $cached = $rendered->{$render_key} ) {
+        ( $content, $HasResults ) = @$cached;
+        $RT::Logger->debug(
+            'Reusing the rendered dashboard for "' . $context_user->Name
+                . '" in language ' . ( $args{Language} // 'en' ) );
+    }
+    else {
+        $content = RunComponent(
+            '/Dashboards/Render.html',
+            id         => $dashboard->Id,
+            Preview    => 0,
+            HasResults => \$HasResults,
+        );
+
+        $rendered->{$render_key} = [ $content, $HasResults ];
+    }
 
     if ($dashboard_content->{'SuppressIfEmpty'}) {
         # undef means there were no searches, so we should still send it (it's just portlets)

@@ -145,7 +145,17 @@ sub _Set {
     return ( 0, $self->loc('Permission Denied') )
         unless $self->CurrentUser->HasRight( Right => 'SuperUser', Object => RT->System )
         || ( $args{UserId} == $self->CurrentUser->Id && $args{Field} !~ /^(?:UserId|DashboardId)$/ );
-    return $self->SUPER::_Set(@_);
+
+    my $ret = $self->SUPER::_Set(@_);
+    my ( $status, $msg ) = $ret->as_array;
+
+    # DashboardObj and UserObj are memoized against these columns.
+    if ( $status && $args{Field} =~ /^(?:UserId|DashboardId)$/ ) {
+        delete $self->{_cached}{UserObj};
+        delete $self->{_cached}{DashboardObj};
+    }
+
+    return wantarray ? ( $status, $msg ) : $ret;
 }
 
 =head2 DashboardObj
@@ -156,9 +166,16 @@ Returns the corresponding dashboard object of current subscription.
 
 sub DashboardObj {
     my $self = shift;
+
+    # Kept on the record so a mailer run that renders for many recipients
+    # loads the dashboard once. LoadByCols clears _cached; _Set clears it
+    # when DashboardId changes.
+    return $self->{_cached}{DashboardObj}
+        if exists $self->{_cached}{DashboardObj};
+
     my $dashboard = RT::Dashboard->new( $self->CurrentUser );
     $dashboard->Load( $self->DashboardId );
-    return $dashboard;
+    return $self->{_cached}{DashboardObj} = $dashboard;
 }
 
 =head2 UserObj
@@ -169,9 +186,15 @@ Returns the corresponding user object of current subscription.
 
 sub UserObj {
     my $self = shift;
+
+    # See DashboardObj; this one backs CurrentUserCanSee/Modify and is asked
+    # for once per ContentObj check.
+    return $self->{_cached}{UserObj}
+        if exists $self->{_cached}{UserObj};
+
     my $user = RT::User->new( $self->CurrentUser );
     $user->Load( $self->UserId );
-    return $user;
+    return $self->{_cached}{UserObj} = $user;
 }
 
 sub FindDependencies {
