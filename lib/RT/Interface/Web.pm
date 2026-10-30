@@ -982,8 +982,13 @@ sub ShowRequestedPage {
     my $track_access = RequestENV('HTTP_HX_REQUEST') ? 0 : 1;
     ExpandShortenerCode( $ARGS, SetLastAccessed => $track_access );
 
-    # precache all system level rights for the current user
-    $HTML::Mason::Commands::session{CurrentUser}->PrincipalObj->HasRights( Object => RT->System );
+    # precache all system level rights for the current user, except for htmx
+    # component requests. A component is a full request but renders one small
+    # fragment, so it should pay only for the rights it asks about; anything it
+    # does check is cached by HasRight/HasRights for the rest of the request.
+    if ( $m->request_path !~ /^(?:\/SelfService)?\/Views/ ) {
+        $HTML::Mason::Commands::session{CurrentUser}->PrincipalObj->HasRights( Object => RT->System );
+    }
 
     if ( $HTML::Mason::Commands::r->path_info =~ m{^(/+)User/Prefs.html} ) {
         RT->Deprecated(
